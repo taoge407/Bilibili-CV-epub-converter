@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 from ebooklib import epub
-from win32api import Sleep
+import time
 
 rlId = 36436
 headers = {
@@ -47,6 +47,7 @@ class ReadList:
                         self.article_ids.append(str(i['dyn_id_str']))
         except Exception as e:
             print(e)
+            exit()
 
 
 class Opus_Article:
@@ -60,10 +61,20 @@ class Opus_Article:
         opus_url = f"https://m.bilibili.com/opus/{self.article_id}?from=readlist"
         global headers
         try:
-            response = requests.get(opus_url, headers=headers)
-            if response.status_code != 200:
-                raise Exception(f"无法访问页面id{self.article_id}，Code{response.status_code}")
-            soup = BeautifulSoup(response.text, 'html.parser')
+            os.makedirs("./cache", exist_ok=True)
+            fn = f"./cache/{self.article_id}.txt"
+
+            if os.path.isfile(fn):
+                with open(fn, 'r') as f_content:
+                    print(f"found article file {self.article_id}")
+                    soup = BeautifulSoup(f_content.read(), 'html.parser')
+            else:
+                response = requests.get(opus_url, headers=headers)
+                if response.status_code != 200:
+                    raise Exception(f"无法访问页面id{self.article_id}，Code{response.status_code}")
+                soup = BeautifulSoup(response.text, 'html.parser')
+                with open(fn, 'w') as f_content:
+                    f_content.write(response.text)
             self.title = soup.find("span", class_="opus-module-title__text").text.strip()
             content_div = soup.find("div", class_='opus-module-content opus-paragraph-children')
             if content_div:
@@ -71,6 +82,7 @@ class Opus_Article:
                     if p.find("span") is None:
                         p.decompose()
                 for img in content_div.find_all("img"):
+
                     src = img.get('data-src') or img.get('src')
                     if src and not src.startswith('data:'):
                         # 处理相对路径
@@ -79,9 +91,12 @@ class Opus_Article:
                         elif src.startswith('/'):
                             src = 'https://www.bilibili.com' + src
                     self.images.append(src)
+                    src = "/images/image_" + str(src.split("/")[-1])
+
                 self.context = str(content_div)
         except Exception as e:
             print(e)
+            exit()
 
 class Converter:
     def __init__(self, read_list: ReadList, articles: list[Opus_Article]):
@@ -100,10 +115,12 @@ class Converter:
         ebook.add_author(self.read_list.author)
 
         chapters = []
+        index = 0
+        image_urls_set = set()
         for chapter_article in self.article:
             chapter = epub.EpubHtml(
                 title= chapter_article.title,
-                file_name='article.xhtml',
+                file_name=f'article{index}.xhtml',
                 lang='zh-CN'
             )
             chapter.content = f"""<html>
@@ -119,39 +136,42 @@ class Converter:
         """.encode('utf-8')
             ebook.add_item(chapter)
             chapters.append(chapter)
-            for image_url in chapter_article.images:
-                try:
-                    image_data = download_image(url=image_url)
-                    if image_data:
-                        ext = os.path.splitext(urlparse(image_url).path)[1].lower()
-                        if ext in ['.jpg', '.jpeg']:
-                            mime_type = 'image/jpeg'
-                            file_ext = '.jpg'
-                        elif ext == '.png':
-                            mime_type = 'image/png'
-                            file_ext = '.png'
-                        elif ext == '.gif':
-                            mime_type = 'image/gif'
-                            file_ext = '.gif'
-                        elif ext == '.webp':
-                            mime_type = 'image/webp'
-                            file_ext = '.webp'
-                        else:
-                            mime_type = 'image/jpeg'
-                            file_ext = '.jpg'
+            index += 1
+            image_urls_set.update(chapter_article.images)
 
-                        img_id = image_url.split('/')[-1].split('.')[0]
-                        image_item = epub.EpubImage(
-                            uid=f"img_{img_id}",
-                            file_name=f"images/image_{img_id}{file_ext}",
-                            media_type=mime_type,
-                            content=image_data,
-                        )
-                        ebook.add_item(image_item)
-                        print(f"添加图片{img_id}")
-                except Exception as e:
-                    print(e)
-        ebook.toc = [(epub.Section('文集'), self.article)]
+        for image_url in image_urls_set:
+            try:
+                image_data = download_image(url=image_url)
+                if image_data:
+                    ext = os.path.splitext(urlparse(image_url).path)[1].lower()
+                    if ext in ['.jpg', '.jpeg']:
+                        mime_type = 'image/jpeg'
+                        file_ext = '.jpg'
+                    elif ext == '.png':
+                        mime_type = 'image/png'
+                        file_ext = '.png'
+                    elif ext == '.gif':
+                        mime_type = 'image/gif'
+                        file_ext = '.gif'
+                    elif ext == '.webp':
+                        mime_type = 'image/webp'
+                        file_ext = '.webp'
+                    else:
+                        mime_type = 'image/jpeg'
+                        file_ext = '.jpg'
+
+                    img_id = image_url.split('/')[-1].split('.')[0]
+                    image_item = epub.EpubImage(
+                        uid=f"img_{img_id}",
+                        file_name=f"images/image_{img_id}{file_ext}",
+                        media_type=mime_type,
+                        content=image_data,
+                    )
+                    ebook.add_item(image_item)
+                    print(f"添加图片{img_id}")
+            except Exception as e:
+                print(e)
+        ebook.toc = [(epub.Section('文集'), chapters)]
         ebook.add_item(epub.EpubNcx())
         ebook.add_item(epub.EpubNav())
         ebook.spine = ['nav'] + chapters
@@ -160,6 +180,14 @@ class Converter:
         epub.write_epub(f".\\rl{rlId}.epub", ebook, {})
 
 def download_image(url) -> bytes:
+    img_id = url.split('/')[-1].split('.')[0]
+    os.makedirs("./images_cache/", exist_ok=True)
+    fn = f"./images_cache/{img_id}"
+    if os.path.exists(fn):
+        with open(fn, 'rb') as f:
+            print(f"found img file {img_id}")
+            return f.read()
+
     try:
         response = requests.get(url, headers={
             'Referer': 'https://www.bilibili.com/',
@@ -169,7 +197,8 @@ def download_image(url) -> bytes:
         if 'image' not in content_type:
             print(f" {url} 不是图片 (Content-Type: {content_type})")
             return None
-
+        with open(fn, 'wb') as f:
+            f.write(response.content)
         return response.content
     except Exception as e:
         print(e)
@@ -186,6 +215,6 @@ for opus_id in readlist.article_ids:
     print(f"getting opus id{opus_id}")
     article.fetch_content()
     articles.append(article)
-    Sleep(1)
+    time.sleep(1)
 c = Converter(readlist, articles)
 c.convert_epub()
