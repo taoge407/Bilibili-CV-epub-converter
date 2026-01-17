@@ -9,7 +9,10 @@
 1. Clone this repo.
 
     `git clone https://github.com/taoge407/Bilibili-CV-epub-converter.git`
-2. Run the script.
+2. Install all the libs required.
+    
+    `pip install -r requirements.txt`
+3. Run the script.
 
     `python converter.py <readlist ID without perfix>`
     Eg: `python converter.py 36436`
