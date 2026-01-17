@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from ebooklib import epub
 import time
 
-rlId = sys.argv[1] if sys.argv[1] else 36436
+rlId = sys.argv[1] if len(sys.argv) > 1 else 36436
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
     "Referer": "https://www.bilibili.com/",
@@ -88,6 +88,9 @@ class Opus_Article:
                 for p in soup.find_all("p"):
                     if p.find("span") is None:
                         p.decompose()
+
+                for card in content_div.find_all("div", class_="opus-para-link-card"):
+                    card.decompose()
 
                 for img in content_div.find_all("img"):
                     #src = img.get("data-src") or img.get("src")
