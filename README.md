@@ -16,4 +16,7 @@
 
     `python converter.py <readlist ID without perfix>`
     Eg: `python converter.py 36436`
-3. The epub file will be generated in the running dir.
+4. The epub file will be generated in the running dir.
+5. If sometimes cookies are required, paste your cookies in the file `cookie.txt`
+
+    Eg: buvid3=143159......; b_nut=xxxxx; b_lsid=xxx; _uuid=xxxxx
